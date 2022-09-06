@@ -1,0 +1,548 @@
+﻿///////////////////////////////////////////////////
+//
+// Attract-Mode Frontend - Grid Game Station Layout
+//
+///////////////////////////////////////////////////
+
+class UserConfig </ help="Navigation controls: Up/Down (to move up and down) and Page Up/Page Down (to move left and right)" />{
+	</ label="Theme Resolution", help="Setup theme resolution", options="widescreen,CRT", order=1 /> screen="widescreen";
+	</ label="Grid Style", help="Setup grid style", options="vertical rectangle,horizontal rectangle,square", order=2 /> style="vertical rectangle";
+	</ label="History.dat", help="History.dat location. Be sure to enable and config History.dat from the plugins menu.", order=3 />
+	dat_path="C:\\AttractMode\\history.dat";
+ 	</ label="Enable animate stars for BG", help="Enable animated stars", options="yes,no", order=4 /> enable_stars="yes";
+}
+
+fe.load_module( "conveyor" );
+// Include the utilities to read the history.dat file
+dofile(fe.script_dir + "file_util.nut" );
+fe.load_module("animate");
+
+fe.layout.width = 1920;
+fe.layout.height = 1080;
+
+local my_config = fe.get_config();
+
+local rows;
+local cols;
+local height;
+local width;
+
+if ( my_config["screen"] == "widescreen" ){
+
+	if ( my_config["style"] == "vertical rectangle" ){
+		rows = 3;
+		cols = 6;
+		height =  fe.layout.height / 4.1;
+		width = fe.layout.width / 10.2;
+	}
+
+	else if ( my_config["style"] == "horizontal rectangle" ){
+		rows = 6;
+		cols = 6;
+		height =  fe.layout.height / 8.0;
+		width = fe.layout.width / 10.2;
+	}
+
+	else if ( my_config["style"] == "square" ){
+		rows = 4;
+		cols = 6;
+		height =  fe.layout.height / 5.6;
+		width = fe.layout.width / 10.2;
+	}
+}
+
+
+else if ( my_config["screen"] == "CRT" ){
+
+	if ( my_config["style"] == "vertical rectangle" ){
+		rows = 3;
+		cols = 5;
+		height =  fe.layout.height / 4.4;
+		width = fe.layout.width /8.4;
+	}
+
+	else if ( my_config["style"] == "horizontal rectangle" ){
+		rows = 6;
+		cols = 5;
+		height =  fe.layout.height / 8.1;
+		width = fe.layout.width / 8.4;
+	}
+
+	else if ( my_config["style"] == "square" ){
+		rows = 4;
+		cols = 5;
+		height =  fe.layout.height / 5.9;
+		width = fe.layout.width / 8.4;
+	}
+}
+
+fe.add_image( "bg.png", 0, 0, 1920, 1080 );
+fe.layout.page_size = rows * cols;
+
+local vert_flow = ! "Horizontal";
+
+const PAD=4;
+
+class Grid extends Conveyor
+{
+	frame=null;
+	name_t=null;
+	year_t=null;
+	num_t=null;
+ 	snap_t=null;
+ 	wheel_t=null;
+        history_t=null;
+	sel_x=0;
+	sel_y=0;
+
+	constructor()
+	{
+		base.constructor();
+
+		sel_x = cols / 2;
+		sel_y = rows / 2;
+		fe.add_signal_handler( this, "on_signal" );	
+
+			transition_ms = 1;
+	}
+
+	function update_frame()
+	{
+		local Wheelclick = fe.add_sound("click.mp3")
+		      Wheelclick.playing=true
+
+			// Pulsatining Aminamtion for the frame
+			   animation.add( PropertyAnimation( frame, 
+				{   
+					property = "color",
+					tween = Tween.Linear, 
+					start = {red=255 ,green=200, blue=0},
+					end = {red=255, green=255, blue=255},
+					pulse = true,
+					time = 152,
+
+				} ) );
+			// Movement Animation for the frame
+			   animation.add( PropertyAnimation( frame, 
+				{   
+					property = "position",
+					tween = Tween.Linear, 
+					end = { 
+						x = width * sel_x + 54
+						y = fe.layout.height / 24 + height * sel_y + 95
+					}, 
+					time = 40, 
+				} ) );
+		
+		name_t.index_offset = year_t.index_offset = num_t.index_offset = snap_t.index_offset = wheel_t.index_offset = history_t.index_offset = get_sel() - selection_index;	
+	}
+
+	function do_correction()
+	{
+		local corr = get_sel() - selection_index;
+		foreach ( o in m_objs )
+		{
+			local idx = o.m_art.index_offset - corr;
+			o.m_art.rawset_index_offset( idx );
+
+		}
+	}
+
+	function get_sel()
+	{
+		return vert_flow ? ( sel_x * rows + sel_y ) : ( sel_y * cols + sel_x );
+	}
+
+	function on_signal( sig )
+	{
+		switch ( sig )	
+		{
+		case "up":
+			if ( vert_flow && ( sel_x > 0 ))
+			{
+				sel_x--;
+				update_frame();
+			}
+			else if ( !vert_flow && ( sel_y > 0 ) )
+			{
+				sel_y--;
+				update_frame();
+			}
+			else
+			{
+				transition_swap_point=1.0;
+				do_correction();
+				fe.signal( "prev_page" );
+			}
+			return true;
+
+		case "down":
+			if ( vert_flow && ( sel_x < cols - 1 ) )
+			{
+				sel_x++;
+				update_frame();
+			}
+			else if ( !vert_flow && ( sel_y < rows - 1 ) )
+			{
+				sel_y++;
+				update_frame();
+			}
+			else
+			{
+				transition_swap_point=1.0;
+				do_correction();
+				fe.signal( "next_page" );
+			}
+			return true;
+
+		case "left":
+			if ( vert_flow && ( sel_y > 0 ) )
+			{
+				sel_y--;
+				update_frame();
+			}
+			else if ( !vert_flow && ( sel_x > 0 ) )
+			{
+				sel_x--;
+				update_frame();
+			}
+			else
+			{
+				transition_swap_point=1.0;
+				fe.signal( "prev_display" );
+			}
+			return true;
+
+		case "right":
+			if ( vert_flow && ( sel_y < rows - 1 ))
+			{
+				sel_y++;
+				update_frame();
+			}
+			else if ( !vert_flow && ( sel_x < cols - 1 ) )
+			{
+				sel_x++;
+				update_frame();
+			}
+			else
+			{
+				transition_swap_point=1.0;
+				fe.signal( "next_display" );
+			}
+			return true;
+
+
+		case "exit":
+		case "exit_no_menu":
+			break;
+		case "select":
+		default:
+			// Correct the list index if it doesn't align with
+			// the game our frame is on
+			//
+			enabled=false; // turn conveyor off for this switch
+			local frame_index = get_sel();
+			fe.list.index += frame_index - selection_index;
+
+			set_selection( frame_index );
+			update_frame();
+			enabled=true; // re-enable conveyor
+			break;
+
+		}
+
+		return false;
+	}
+
+	function on_transition( ttype, var, ttime )
+	{
+		switch ( ttype )
+		{
+		case Transition.StartLayout:
+		case Transition.FromGame:
+			if ( ttime < transition_ms )
+			{
+				for ( local i=0; i< m_objs.len(); i++ )
+				{
+					local r = i % rows;
+					local c = i / rows;
+					local num = rows + cols - 2;
+					if ( num < 1 )
+						num = 1;
+
+					local temp = 510 * ( num - r - c ) / num * ttime / transition_ms;
+					m_objs[i].set_alpha( ( temp > 255 ) ? 255 : temp );
+				}
+
+				frame.alpha = 255 * ttime / transition_ms;
+				return true;
+			}
+
+			local old_alpha = m_objs[ m_objs.len()-1 ].m_art.alpha;
+
+			foreach ( o in m_objs )
+				o.set_alpha( 255 );
+
+			frame.alpha = 255;
+
+			if ( old_alpha != 255 )
+				return true;
+
+			break;
+
+		case Transition.ToGame:
+		case Transition.EndLayout:
+			if ( ttime < transition_ms )
+			{
+				for ( local i=0; i< m_objs.len(); i++ )
+				{
+					local r = i % rows;
+					local c = i / rows;
+					local num = rows + cols - 2;
+					if ( num < 1 )
+						num = 1;
+
+					local temp = 255 - 510 * ( num - r - c ) / num * ttime / transition_ms;
+					m_objs[i].set_alpha( ( temp < 0 ) ? 0 : temp );
+				}
+				frame.alpha = 255 - 255 * ttime / transition_ms;
+				return true;
+			}
+
+			local old_alpha = m_objs[ m_objs.len()-1 ].m_art.alpha;
+
+			foreach ( o in m_objs )
+				o.set_alpha( 0 );
+
+			frame.alpha = 0;
+			fav.visible = false;
+
+			if ( old_alpha != 0 )
+				return true;
+
+			break;
+		case Transition.FromOldSelection:
+		case Transition.ToNewList:
+
+			foreach ( o in m_objs )
+			break;
+		}
+
+		return base.on_transition( ttype, var, ttime );
+	}
+}
+
+::gridc <- Grid();
+
+class MySlot extends ConveyorSlot
+{
+	m_num = 0;
+	m_shifted = false;
+	m_art = null;
+	favorite = null; 
+
+	constructor( num )
+	{
+		m_num = num;
+		m_art = fe.add_artwork( "flyer", 0, 0,
+				width - 4.5*PAD, height - 5.5*PAD );
+		m_art.alpha = 0;
+
+			
+	//load the favorite
+		local fav = fe.add_image(fe.script_dir + "favourite.png");
+		fav.visible = false;
+		fav.preserve_aspect_ratio = true;			
+		favorite = fav;
+			
+	// ensures favorite icon is turn on/off during transition
+		fe.add_transition_callback( this, "favorite_setting" );
+		base.constructor();
+	}
+
+	function on_progress( progress, var )
+	{
+		if ( var == 0 )
+			m_shifted = false;
+
+			local r = m_num / cols;
+			local c = m_num % cols;
+		
+				m_art.x = c * width + PAD + 59;
+				m_art.y = fe.layout.height / 24 + r * height + PAD + 100;
+
+				favorite.x = c * width + PAD + 59;
+				favorite.y = fe.layout.height / 24 + r * height + PAD + 100;
+	}
+
+// turn on/off the favorite icon
+	function set_favorite()
+	{
+
+		local m = fe.game_info(Info.Favourite, m_art.index_offset);
+		
+		if (m == "1")
+			favorite.visible  = true;
+		else
+			favorite.visible  = false;
+	}
+	
+	// set favorite icon during after game transition
+	function favorite_setting(ttype, var, ttime)
+	{
+		switch ( ttype )
+		{
+			case Transition.ToNewList:
+			case Transition.StartLayout:
+			case Transition.FromOldSelection: // set the favorite icon
+			{
+				this.set_favorite();
+			}
+		}
+			
+		return false;
+	}
+
+
+	function swap( other )
+	{
+		m_art.swap( other.m_art );
+
+	}
+
+	function set_index_offset( io )
+	{
+		m_art.index_offset = io;
+
+	}
+
+	function reset_index_offset()
+	{
+		m_art.rawset_index_offset( m_base_io ); 
+
+	}
+
+	function set_alpha( alpha )
+	{
+		m_art.alpha = alpha; 
+
+	}
+}
+
+//------------------------------------------------------------------------------------------------------
+
+	function get_hisinfo(offset) 
+	{ 
+		local sys = split( fe.game_info( Info.System,offset ), ";" );
+		local rom = fe.game_info( Info.Name,offset );
+		local text = ""; 
+		local currom = "";
+
+		// 
+		// we only go to the trouble of loading the entry if 
+		// it is not already currently loaded 
+		// 
+		
+		local alt = fe.game_info( Info.AltRomname,offset );
+		local cloneof = fe.game_info( Info.CloneOf,offset );
+		local lookup = get_history_offset( sys, rom, alt, cloneof );
+		
+		if ( lookup >= 0 ) 
+		{ 
+
+			text = get_history_entry( lookup, my_config );
+ 			local index = text.find("- TECHNICAL -");
+			if (index >= 0)
+			{	
+				local tempa = text.slice(0, index);
+				text = strip(tempa);
+			} 
+		
+	 
+		} else { 
+			if ( lookup == -2 ) 
+				text = "Index file not found.  Try generating an index from the history.dat plug-in configuration menu.";
+			else 
+				text = "No Information available for:  " + rom; 
+		}  
+		return text;
+	}
+
+
+// Game name text. We do this in the layout as the frontend doesn't chop up titles with a forward slash
+ function gamename( offset ) {
+  local s = split( fe.game_info( Info.Title, offset ), "(/[" );
+ 	if ( s.len() > 0 ) return s[0];
+  return "";
+}
+
+
+// Dynamically change the genre text
+	function genre(offset)
+	{
+		local result = "Unknown";
+		local cat = " " + fe.game_info(Info.Category, offset).tolower();
+		local supported = {
+			//filename : [ match1, match2 ]
+			"Action": [ "action" ],
+			"Adventure": [ "adventure" ],
+			"Fighting": [ "fighting", "fighter", "beat'em up" ],
+			"Platformer": [ "platformer", "platform" ],
+			"Puzzle": [ "puzzle" ],
+			"Racing": [ "racing", "driving" ],
+			"Rpg": [ "rpg", "role playing", "role playing game" ],
+			"Shooter": [ "shooter", "shmup" ],
+			"Sports": [ "sports", "boxing", "golf", "baseball", "football", "soccer" ],
+			"Strategy": [ "strategy"]
+		}
+		
+		local matches = [];
+		foreach( key, val in supported )
+		{
+			foreach( nickname in val )
+			{
+				if ( cat.find(nickname, 0) ) matches.push(key);
+			}
+		}
+		if ( matches.len() > 0 )
+			result = matches[0];	
+
+		return result;
+	}
+
+
+local my_array = [];
+for ( local i=0; i<rows*cols; i++ )
+	my_array.push( MySlot( i ) );
+
+gridc.set_slots( my_array, gridc.get_sel() );
+
+gridc.num_t = fe.add_text( "[ListEntry] / [ListSize] GAMES", 768, 5, 384, 28 );
+gridc.num_t.align = Align.Centre;
+gridc.num_t.alpha = 160;
+gridc.num_t.font="roboto";
+
+if ( my_config["style"] == "vertical rectangle" ){
+	gridc.frame = fe.add_image( "frame.png", width * 2, height * 2, width, height*0.98 );
+}
+
+else if ( my_config["style"] == "horizontal rectangle" ){
+	gridc.frame = fe.add_image( "frame2.png", width * 2, height * 2, width, height*0.98 );
+}
+
+else if ( my_config["style"] == "square" ){
+	gridc.frame = fe.add_image( "frame3.png", width * 2, height * 2, width, height*0.98 );
+}
+
+gridc.wheel_t = fe.add_artwork("wheel",  1390, 80, 300, 116);
+gridc.wheel_t.trigger = Transition.EndNavigation;
+
+
+
+gridc.snap_t = fe.add_artwork ("snap",  1255, 585, 580, 350 );
+gridc.snap_t.trigger = Transition.EndNavigation;
+
+
+
+
+gridc.update_frame();
